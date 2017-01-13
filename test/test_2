@@ -1,0 +1,68 @@
+#!/bin/sh
+# -*- coding: utf-8-unix -*-
+
+DIR="$(cd "$(dirname "${0}")"; pwd)"
+TOP_DIR="$(cd "$(dirname "${DIR}")"; pwd)"
+BIN_DIR="${TOP_DIR}/bin"
+LIB_DIR="${TOP_DIR}/lib"
+TEST_DIR="${TOP_DIR}/test"
+
+PATH="${PATH}:${BIN_DIR}:${LIB_DIR}"
+
+. xtest.sh
+
+data 'dataset #1' <<EOF
+a   b   c
+d   e   f
+EOF
+
+with 'dataset #1' as x y z
+xtest 'dd #1: dataset #1-${DATA_INDEX}: x,y,z = $x,$y,$z' : <<'EOF'
+case "${DATA_INDEX}" in
+     1 )
+	assert $x = a
+	assert $y = b
+	assert $z = c
+	;;
+     2 )
+	assert $x = d
+	assert $y = e
+	assert $z = f
+	;;
+     * )
+	false
+	;;
+esac
+EOF
+
+with 'dataset #1' as row
+xtest 'dd #2: dataset #1-${DATA_INDEX}: row = ($row)' : <<'EOF'
+case "${DATA_INDEX}" in
+     1 )
+	assert "$row" = 'a   b   c'
+	;;
+     2 )
+	assert "$row" = 'd   e   f'
+	;;
+     * )
+	false
+	;;
+esac
+EOF
+
+with 'dataset #1' as x __
+xtest 'dd #3: dataset #1-${DATA_INDEX}: x,__ = $x,($__)' : <<'EOF'
+case "${DATA_INDEX}" in
+     1 )
+	assert "$x" = a
+	assert "$__" = 'b   c'
+	;;
+     2 )
+	assert "$x" = d
+	assert "$__" = 'e   f'
+	;;
+     * )
+	false
+	;;
+esac
+EOF

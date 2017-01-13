@@ -1,0 +1,26 @@
+#!/bin/sh
+# -*- coding: utf-8-unix -*-
+
+DIR="$(cd "$(dirname "${0}")"; pwd)"
+TOP_DIR="$(cd "$(dirname "${DIR}")"; pwd)"
+BIN_DIR="${TOP_DIR}/bin"
+LIB_DIR="${TOP_DIR}/lib"
+TEST_DIR="${TOP_DIR}/test"
+
+PATH="${PATH}:${BIN_DIR}:${LIB_DIR}"
+
+. xtest.sh
+
+xtest 'echo'              : echo
+xtest 'echo w/ args'      : echo x
+xtest 'false'             : false
+xtest 'true'              : true
+xtest 'ls -al'            : ls -al
+xtest "'no such command'" : illegal command
+xtest 'cat'               : cat
+xtest 'sleep 2'           : sleep 2
+xtest 'assert 1 = 1'      : assert 1 = 1
+xtest 'assert 1 = 2'      : assert 1 = 2
+xtest 'assert 1 -lt 2'    : assert 1 -lt 2
+
+# xtest_runtest

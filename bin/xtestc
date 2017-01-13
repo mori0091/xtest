@@ -1,0 +1,45 @@
+#!/bin/sh
+# -*- coding: utf-8-unix -*-
+
+DIR="$(cd "$(dirname "${0}")"; pwd)"
+TOP_DIR="$(cd "$(dirname "${DIR}")"; pwd)"
+BIN_DIR="${TOP_DIR}/bin"
+LIB_DIR="${TOP_DIR}/lib"
+TEST_DIR="${TOP_DIR}/test"
+
+PATH="${PATH}:${BIN_DIR}:${LIB_DIR}"
+
+. xtest.sh
+
+xtestc_run ()
+{
+    local x
+    for x in "${@}" ; do
+	[ -f "${x}" ] || continue
+	. "${x}"
+    done
+
+    xtest_runtest
+}
+
+xtestc_main ()
+{
+    case "${COLOR}" in
+	always | never )
+	    ;;
+	auto | '' )
+	    if is_a_color_tty
+	    then COLOR='always'
+	    else COLOR='never'
+	    fi
+	    ;;
+	* )
+	    COLOR='never'
+	    ;;
+    esac
+    export COLOR
+
+    xtestc_run "${@}"
+}
+
+xtestc_main "${@}"

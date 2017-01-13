@@ -1,0 +1,58 @@
+#!/bin/sh
+# -*- coding: utf-8-unix -*-
+
+DIR="$(cd "$(dirname "${0}")"; pwd)"
+TOP_DIR="$(cd "$(dirname "${DIR}")"; pwd)"
+BIN_DIR="${TOP_DIR}/bin"
+LIB_DIR="${TOP_DIR}/lib"
+TEST_DIR="${TOP_DIR}/test"
+
+PATH="${PATH}:${BIN_DIR}:${LIB_DIR}"
+
+. xtest.sh
+
+_quote_ ()
+{
+    local x
+    local xs
+    local ys
+    local chars
+    xs="${1}"
+    ys=;
+    chars="${2:-\" 	\\}"
+    while [ ${#xs} -gt 0 ] ; do
+	x=${xs%"${xs#?}"}
+	xs=${xs#?}
+	case "${x}" in
+	    [${chars}]* )
+		ys="${ys}\\${x}"
+		;;
+	    * )
+		ys="${ys}${x}"
+		;;
+	esac
+    done
+    echo "${ys}"
+}
+
+_expand_ ()
+{
+    eval "set - \"$(_quote_ "${1}" "${2:-\" 	}")\";"
+    printf %s "${1}"
+}
+
+data 'quote dataset' <<'EOF'
+:a\ \"\ \"\ space:	:a " " space:
+:2\ \"\ \ \"\ spaces:	:2 "  " spaces:
+EOF
+
+with 'quote dataset' as expected xs
+xtest 'quote #${DATA_INDEX}' : <<-'EOF'
+	local actual
+	assert "${expected}" &&
+	assert "${xs}" &&
+	actual="$(_quote_ "${xs}")" &&
+	assert "${expected}" = "${actual}" &&
+	actual="$(_expand_ "${expected}")" &&
+	assert "${actual}" = "${xs}"
+	EOF
