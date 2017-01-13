@@ -1,0 +1,53 @@
+#!/bin/sh
+# -*- coding: utf-8-unix -*-
+
+DIR="$(cd "$(dirname "${0}")"; pwd)"
+TOP_DIR="$(cd "$(dirname "${DIR}")"; pwd)"
+BIN_DIR="${TOP_DIR}/bin"
+LIB_DIR="${TOP_DIR}/lib"
+TEST_DIR="${TOP_DIR}/test"
+
+PATH="${PATH}:${BIN_DIR}:${LIB_DIR}"
+
+. parser.sh
+
+# \usage xtestc_parser SOURCE_PATH < SOURCE > SCRIPT
+xtestc_parser ()
+{
+    p_init "${@}"
+    # while try _readline_raw ; do
+    until try p_eof ; do
+	any p_spaces
+	_print
+	any p_except "${NEWLINE}"
+	_print '\33[4m%s\33[24m'
+	p_char "${NEWLINE}"
+	_print
+    done
+}
+
+# --- main ---
+[ $# -ne 0 ] || exit 1
+y=;
+for x in "${@}"; do
+    if [ ':-' = ":${x}" ] ; then
+	[ ! "${y}" ] || {
+	    echo "Too much stdin(-)" >&2
+	    exit 1
+	}
+	y=1
+    else
+	[ -f "${x}" ] || {
+	    echo "No such file - '${x}'" >&2
+	    exit 1
+	}
+    fi
+done
+while [ $# -gt 0 ] ; do
+    if [ ':-' = ":${1}" ] ; then
+	xtestc_parser '-'
+    else
+	xtestc_parser "${1}" < "${1}"
+    fi
+    shift
+done
