@@ -58,14 +58,16 @@ try ()
 
 any ()
 {
+    X=;
     while try "${@}" ; do
 	true
     done
+    true
 }
 
 many ()
 {
-    "${@}" ; try any "${@}"
+    "${@}" && try any "${@}"
 }
 
 __readline_raw ()
@@ -141,6 +143,49 @@ p_none_of ()
 p_spaces ()
 {
     p_one_of " ${TAB}"
+}
+
+p_word ()
+{
+    local x xs
+    xs="${1:?}"
+
+    x=${xs%"${xs#?}"}
+    xs=${xs#?}
+    p_char "${x}" &&
+    while [ ${#xs} -gt 0 ] ; do
+	x=${xs%"${xs#?}"}
+	xs=${xs#?}
+	try p_char "${x}" || break
+    done || expects "'${1}'"
+}
+
+p_string_expr ()
+{
+    many p_string_expr1
+}
+
+p_string_expr1 ()
+{
+    try p_quated_string || try p_double_quated_string || p_unquated_string
+}
+
+p_quated_string ()
+{
+    # expects "quated string"
+    local x
+    p_char "'" && any p_except "'" && x="$(_print %s)" && p_char "'" && X="'${x}'"
+}
+
+p_double_quated_string ()
+{
+    expects "double quated string"
+}
+
+p_unquated_string ()
+{
+    # expects "unquated string"
+    many p_none_of  "\"' ${TAB}${NEWLINE}"
 }
 
 apply ()

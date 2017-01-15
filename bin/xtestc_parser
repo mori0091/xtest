@@ -11,18 +11,53 @@ PATH="${PATH}:${BIN_DIR}:${LIB_DIR}"
 
 . parser.sh
 
+p_data_statement ()
+{
+    # expects "@data DATA_NAME { DATA_RECORDS }"
+    p_word '@data' && p_spaces && _print 'data' &&
+	p_string_expr && _print ' %s' &&
+	{ any p_spaces && try p_char "${NEWLINE}" || p_spaces ; } &&
+	p_char '{' && { try p_spaces ; p_char "${NEWLINE}" ; } &&
+	_print ' <<-"END"\n' &&
+	until try p_char '}' ; do
+	    any p_spaces &&
+		any p_except "${NEWLINE}" &&
+		_print "${TAB}%s" &&
+		p_char "${NEWLINE}" &&
+		_print
+	done &&
+	{ try p_spaces ; p_char "${NEWLINE}" ; } &&
+	_print "${TAB}END\n"
+}
+
+p_with_statement ()
+{
+    expects "@with DATA_NAME as PARAM... [VAR=VAL]..."
+}
+
+p_test_statement ()
+{
+    expects "@test DATA_NAME { CODE }"
+}
+
 # \usage xtestc_parser SOURCE_PATH < SOURCE > SCRIPT
 xtestc_parser ()
 {
+    local x xs ys
+    
     p_init "${@}"
     # while try _readline_raw ; do
     until try p_eof ; do
-	any p_spaces
-	_print
-	any p_except "${NEWLINE}"
-	_print '\33[4m%s\33[24m'
-	p_char "${NEWLINE}"
-	_print
+	try any p_spaces && _print
+	try p_data_statement ||
+	try p_with_statement ||
+	try p_test_statement ||
+	{
+	    any p_except "${NEWLINE}"
+	    _print '\33[4m%s\33[24m'
+	    p_char "${NEWLINE}"
+	    _print
+	}
     done
 }
 
