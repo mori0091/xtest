@@ -38,17 +38,17 @@ parse ()
     RESULT=;
     TRY=0
     shift
-    __bind__ "${@}" 
+    _bind_ "${@}"
 }
 
-__bind__ ()
+# ----
+
+_bind_ ()
 {
     if [ $# -gt 0 ] ; then
 	eval "${@}"
     fi
 }
-
-# ----
 
 __error__ ()
 {
@@ -82,10 +82,35 @@ _readline_ ()
     __col__=0
 }
 
+_peek_ ()
+{
+    if [ ${#BUFFER} -eq 0 ] ; then
+	_readline_ || {
+	    unexpected "eof"
+	    return 1
+	}
+    fi
+
+    eval ${1}=\${BUFFER%\"\${BUFFER#?}\"}\;
+}
+
+_consume_ ()
+{
+    local x xs
+    xs=${BUFFER#?}
+    x=${BUFFER%"${xs}"}
+
+    BUFFER="${xs}"
+    CONSUMED="${CONSUMED}${x}"
+    __col__=$(( __col__ + 1 ))
+    RESULT="${x}"
+}
+
 # ----
 # try PARSER
 # many PARSER
 # many1 PARSER
+# PARSER1 and PARSER2
 # PARSER1 or PARSER2
 # 
 # unexpected STRING
@@ -99,312 +124,151 @@ _readline_ ()
 
 try ()
 {
-    p_try "${1}" || return
+    [ ${#1} -gt 0 ] || __error__ "try PARSER"
+
+    CONSUMED=;
+    TRY=$(( TRY + 1 ))
+    if eval "${1}" ; then
+	TRY=$(( TRY - 1 ))
+    else
+	TRY=$(( TRY - 1 ))
+	BUFFER="${CONSUMED}${BUFFER}"
+	CONSUMED=;
+	RESULT=;
+	return 1
+    fi
     shift
-    __bind__ "${@}"
+    _bind_ "${@}"
 }
 
 many ()
 {
-    p_many "${1}" || return
+    [ ${#1} -gt 0 ] || __error__ "many PARSER"
+
+    try "${1}" and many "${1}"
     shift
-    __bind__ "${@}"
+    _bind_ "${@}"
 }
 
 many1 ()
 {
-    p_many1 "${1}" || return
+    [ ${#1} -gt 0 ] || __error__ "many1 PARSER"
+
+    ${1} || return
+    and many "${1}"
     shift
-    __bind__ "${@}"
-}
-
-unexpected ()
-{
-    p_unexpected "${1}" || return
-    shift
-    __bind__ "${@}"
-}
-
-eof ()
-{
-    p_eof || return
-    __bind__ "${@}"
-}
-
-anyChar ()
-{
-    p_anyChar || return
-    __bind__ "${@}"
-}
-
-except ()
-{
-    p_except "${1}" || return
-    shift
-    __bind__ "${@}"
-}
-
-char ()
-{
-    p_char "${1}" || return
-    shift
-    __bind__ "${@}"
-}
-
-oneOf ()
-{
-    p_oneOf "${1}" || return
-    shift
-    __bind__ "${@}"
-}
-
-noneOf ()
-{
-    p_noneOf "${1}" || return
-    shift
-    __bind__ "${@}"
-}
-
-quoted_string ()
-{
-    p_quoted_string || return
-    __bind__ "${@}"
+    _bind_ "${@}"
 }
 
 # ----
 
-p_unexpected ()
+unexpected ()
 {
     [ ${TRY} -gt 0 ] || __syntax_error__ "Unexpected <${*}>"
     return 1
 }
 
-p_try ()
-{
-    [ ${#1} -gt 0 ] || return
-
-    local ___CONSUMED___
-    ___CONSUMED___="${CONSUMED}"
-    CONSUMED=;
-    TRY=$(( TRY + 1 ))
-    if eval "${1}" ; then
-	TRY=$(( TRY - 1 ))
-	CONSUMED="${___CONSUMED___}${CONSUMED}"
-	true
-    else
-	TRY=$(( TRY - 1 ))
-	BUFFER="${CONSUMED}${BUFFER}"
-	CONSUMED="${___CONSUMED___}"
-	false
-    fi
-}
-
-p_many ()
-{
-    [ ${#1} -gt 0 ] || __error__ "p_many PARSER"
-    
-    local x
-    x=;
-    while p_try "${1}" ; do
-	x="${x}${RESULT}"
-    done
-    RESULT="${x}"
-}
-
-p_many1 ()
-{
-    [ ${#1} -gt 0 ] || __error__ "p_many1 PARSER"
-
-    eval "${1}" || return
-    local x
-    x="${RESULT}"
-    while p_try "${1}" ; do
-	x="${x}${RESULT}"
-    done
-    RESULT="${x}"
-}
-
-p_eof ()
+eof ()
 {
     { [ ${#BUFFER} -eq 0 ] && ! _readline_ ; } || {
-	p_unexpected ${BUFFER%${BUFFER#?}}
+	unexpected ${BUFFER%${BUFFER#?}}
 	return 1
     }
+    _bind_ "${@}"
 }
 
-p_anyChar ()
+anyChar ()
 {
-    if [ ${#BUFFER} -eq 0 ] ; then
-	_readline_ || {
-	    p_unexpected "eof"
-	    return 1
-	}
-    fi
-
-    local x xs
-    xs=${BUFFER#?}
-    x=${BUFFER%"${xs}"}
-
-    CONSUMED="${CONSUMED}${x}"
-    BUFFER="${xs}"
-    __col__=$(( __col__ + 1 ))
-    RESULT="${x}"
+    local x
+    _peek_ x || return
+    _consume_
+    _bind_ "${@}"
 }
 
-p_except ()
+except ()
 {
-    [ ${#1} -eq 1 ] || return
+    [ ${#1} -eq 1 ] || __error__ "p_except CHAR"
 
-    if [ ${#BUFFER} -eq 0 ] ; then
-	_readline_ || {
-	    p_unexpected "eof"
-	    return 1
-	}
-    fi
-
-    local x xs
-    xs=${BUFFER#?}
-    x=${BUFFER%"${xs}"}
-
-    [ ":${1}" != ":${x}" ] || { p_unexpected "${x}"; return 1; }
-
-    CONSUMED="${CONSUMED}${x}"
-    BUFFER="${xs}"
-    __col__=$(( __col__ + 1 ))
-    RESULT="${x}"
+    local x
+    _peek_ x || return
+    [ ":${1}" != ":${x}" ] || { unexpected "${x}"; return 1; }
+    _consume_
+    shift
+    _bind_ "${@}"
 }
 
-p_char ()
+char ()
 {
     [ ${#1} = 1 ] || __error__ "p_char CHAR"
 
-    if [ ${#BUFFER} -eq 0 ] ; then
-	_readline_ || {
-	    p_unexpected "eof"
-	    return 1
-	}
-    fi
-
-    local x xs
-    xs=${BUFFER#?}
-    x=${BUFFER%"${xs}"}
-
-    [ ":${1}" = ":${x}" ] || { p_unexpected "${x}"; return 1; }
-    
-    CONSUMED="${CONSUMED}${x}"
-    BUFFER="${xs}"
-    __col__=$(( __col__ + 1 ))
-    RESULT="${x}"
+    local x
+    _peek_ x || return
+    [ ":${1}" = ":${x}" ] || { unexpected "${x}"; return 1; }
+    _consume_
+    shift
+    _bind_ "${@}"
 }
 
-p_oneOf ()
+oneOf ()
 {
     [ ${#1} -gt 0 ] || __error__ "p_oneOf CHARS"
 
-    if [ ${#BUFFER} -eq 0 ] ; then
-	_readline_ || {
-	    p_unexpected "eof"
-	    return 1
-	}
-    fi
-
-    local x xs
-    xs=${BUFFER#?}
-    x=${BUFFER%"${xs}"}
+    local x
+    _peek_ x || return
 
     local ys zs
     ys="${1}"
     while [ ${#ys} -gt 0 ] ; do
 	zs=${ys#?}
 	if [ ":${x}${zs}" = ":${ys}" ] ; then
-	    CONSUMED="${CONSUMED}${x}"
-	    BUFFER="${xs}"
-	    __col__=$(( __col__ + 1 ))
-	    RESULT="${x}"
+	    _consume_
+	    shift
+	    _bind_ "${@}"
 	    return $?
 	fi
 	ys="${zs}"
     done
-    p_unexpected "${x}"
+    unexpected "${x}"
     return 1
 }
 
-p_noneOf ()
+noneOf ()
 {
     [ ${#1} -gt 0 ] || __error__ "p_noneOf CHARS"
 
-    if [ ${#BUFFER} -eq 0 ] ; then
-	_readline_ || {
-	    p_unexpected "eof"
-	    return 1
-	}
-    fi
-
-    local x xs
-    xs=${BUFFER#?}
-    x=${BUFFER%"${xs}"}
+    local x
+    _peek_ x || return
 
     local ys zs
     ys="${1}"
     while [ ${#ys} -gt 0 ] ; do
 	zs=${ys#?}
 	if [ ":${x}${zs}" = ":${ys}" ] ; then
-	    p_unexpected "${x}"
+	    unexpected "${x}"
 	    return 1
 	fi
 	ys="${zs}"
     done
-    CONSUMED="${CONSUMED}${x}"
-    BUFFER="${xs}"
-    __col__=$(( __col__ + 1 ))
-    RESULT="${x}"
+    _consume_
+    shift
+    _bind_ "${@}"
 }
 
-p_quoted_string ()
+# ----
+
+and ()
 {
-    local q
-    local s
-    q="'"
-    char "${q}" && many 'except "${q}"' as s && char "${q}" || return
-    RESULT="'${s}'"
+    [ $? -eq 0 ] || return
+    local _x _xs
+    as _x
+    _bind_ "${@}" || return
+    as _xs
+    RESULT="${_x}${_xs}"
 }
 
-space ()
+or ()
 {
-    oneOf " ${TAB}" || return
-    __bind__ "${@}"
-}
-
-newline ()
-{
-    char "${NEWLINE}" || return
-    __bind__ "${@}"
-}
-
-line ()
-{
-    p_line || return
-    __bind__ "${@}"
-}
-
-p_line ()
-{
-    local x
-    many 'except "${NEWLINE}"' as x && newline || return
-    RESULT="${x}${NEWLINE}"
-}
-
-identifier ()
-{
-    p_identifier || return
-    __bind__ "${@}"
-}
-
-p_identifier ()
-{
-    local x
-    oneOf "_${atoz}${AtoZ}" as x && many 'oneOf "${decdigit}${atoz}${AtoZ}"' || return
-    RESULT="${x}${RESULT}"
+    __error__ "PARSER1 or PARSER2 (not implemented yet)"
 }
 
 # ----
@@ -417,11 +281,76 @@ show ()
     else
 	printf '%s' "${RESULT}"
     fi
-    # RESULT=;
 }
 
 as ()
 {
     [ $# -eq 1 ] || __error__ "as VAR"
     eval "${1}=\"\${RESULT}\";"
+}
+
+# ----
+
+quoted_string ()
+{
+    quote and many except_quote and quote || return
+    _bind_ "${@}"
+}
+
+quote ()
+{
+    local q
+    q="'"
+    char "${q}" || return
+    _bind_ "${@}"
+}
+
+except_quote ()
+{
+    local q
+    q="'"
+    except "${q}" || return
+    _bind_ "${@}"
+}
+
+space ()
+{
+    oneOf " ${TAB}" || return
+    _bind_ "${@}"
+}
+
+newline ()
+{
+    char "${NEWLINE}" || return
+    _bind_ "${@}"
+}
+
+except_newline ()
+{
+    except "${NEWLINE}" || return
+    _bind_ "${@}"
+}
+
+line ()
+{
+    many except_newline and newline || return
+    _bind_ "${@}"
+}
+
+identifier ()
+{
+    alpha_ and many alnum_ || return
+    _bind_ "${@}"
+}
+
+alpha_ ()
+{
+    oneOf "${atoz}${AtoZ}_" || return
+    _bind_ "${@}"
+}
+
+alnum_ ()
+{
+    oneOf "${atoz}${AtoZ}${decdigit}_" || return
+    _bind_ "${@}"
 }
