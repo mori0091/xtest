@@ -23,6 +23,7 @@ readonly AtoZ='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 parse ()
 {
     local CONSUMED
+    local LASTLINE
     local BUFFER
     local __file__
     local __line__
@@ -31,9 +32,10 @@ parse ()
     local TRY
 
     CONSUMED=;
+    LASTLINE=;
     BUFFER=;
     __file__="${1}"
-    __line__=0
+    __line__=1
     __col__=0
     RESULT=;
     TRY=0
@@ -60,26 +62,23 @@ __error__ ()
 __syntax_error__ ()
 {
     printf "\n"
-    printf "Syntax error:${__file__}:${__line__}:${__col__}\n"
+    printf "\n"
+    printf "Syntax error:${__file__}:line ${__line__}:column ${__col__}\n"
+    printf '\33[2m%s\33[0m%s\n' "${LASTLINE%${BUFFER%?}}" "${BUFFER%?}"
+    printf "%${__col__}s\33[1;41m^\33[0;49m\n"
     printf '%s\n' "${*}"
     exit 1
 }
 
 # ----
 
-__readline__ ()
+_readline_ ()
 {
     local IFS
     IFS=;
-    read -r BUFFER && BUFFER="${BUFFER}${NEWLINE}"
-    [ ${#BUFFER} -gt 0 ]
-}
-
-_readline_ ()
-{
-    __readline__ || return
-    __line__=$(( __line__ + 1 ))
-    __col__=0
+    read -r LASTLINE && {
+	BUFFER="${LASTLINE}${NEWLINE}"
+    }
 }
 
 _peek_ ()
@@ -102,12 +101,18 @@ _consume_ ()
 
     BUFFER="${xs}"
     CONSUMED="${CONSUMED}${x}"
-    __col__=$(( __col__ + 1 ))
+    if [ ":${x}" = ":${NEWLINE}" ] ; then
+	__line__=$((__line__ + 1))
+	__col__=0
+    else
+	__col__=$(( __col__ + 1 ))
+    fi
     RESULT="${x}"
 }
 
 # ----
 # try PARSER
+# notFollowedBy PARSER
 # many PARSER
 # many1 PARSER
 # PARSER1 and PARSER2
@@ -126,19 +131,43 @@ try ()
 {
     [ ${#1} -gt 0 ] || __error__ "try PARSER"
 
+    local __old_line__ __old_col__
+    __old_line__=${__line__}
+    __old_col__=${__col__}
+
+    local __old_CONSUMED__
+    __old_CONSUMED__="${CONSUMED}"
+
     CONSUMED=;
+    RESULT=;
     TRY=$(( TRY + 1 ))
     if eval "${1}" ; then
 	TRY=$(( TRY - 1 ))
+	CONSUMED="${__old_CONSUMED__}${CONSUMED}";
     else
 	TRY=$(( TRY - 1 ))
 	BUFFER="${CONSUMED}${BUFFER}"
-	CONSUMED=;
+	CONSUMED="${__old_CONSUMED__}";
 	RESULT=;
+	__line__=${__old_line__}
+	__col__=${__old_col__}
 	return 1
     fi
     shift
     _bind_ "${@}"
+}
+
+notFollowedBy ()
+{
+    [ ${#1} -gt 0 ] || __error__ "notFollowedBy PARSER"
+
+    if try "${1}" ; then
+	unexpected "<${CONSUMED}>"
+	return 1
+    else
+	shift
+	_bind_ "${@}"
+    fi
 }
 
 many ()
@@ -170,11 +199,11 @@ unexpected ()
 
 eof ()
 {
-    { [ ${#BUFFER} -eq 0 ] && ! _readline_ ; } || {
+    if [ ${#BUFFER} -eq 0 ] && ! _readline_ ; then
+	_bind_ "${@}"
+    else
 	unexpected ${BUFFER%${BUFFER#?}}
-	return 1
-    }
-    _bind_ "${@}"
+    fi
 }
 
 anyChar ()
@@ -277,7 +306,7 @@ show ()
 {
     local x
     if [ $# -gt 0 ] ; then
-	printf '%s' "${*}"
+	printf "${*}"
     else
 	printf '%s' "${RESULT}"
     fi
@@ -285,6 +314,7 @@ show ()
 
 as ()
 {
+    [ $? -eq 0 ] || return
     [ $# -eq 1 ] || __error__ "as VAR"
     eval "${1}=\"\${RESULT}\";"
 }
@@ -353,4 +383,29 @@ alnum_ ()
 {
     oneOf "${atoz}${AtoZ}${decdigit}_" || return
     _bind_ "${@}"
+}
+
+word ()
+{
+    [ -n "${1}" ] || __error__ "word STRING"
+
+    local xs
+    xs=${1#?}
+    if [ -n "${xs}" ] ; then
+	char ${1%"${xs}"} and word "${xs}" || return
+    else
+	char ${1%"${xs}"} || return
+    fi
+    shift
+    _bind_ "${@}"
+}
+
+except_blank ()
+{
+    noneOf " ${TAB}${NEWLINE}" && _bind_ "${@}"
+}
+
+anyWord ()
+{
+    { try quoted_string || many1 except_blank ; } && _bind_ "${@}"
 }
