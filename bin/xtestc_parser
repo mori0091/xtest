@@ -21,24 +21,70 @@ cyan ()
     printf "\33[36m%s\33[39m" "${1}"
 }
 
+red ()
+{
+    printf "\33[31m%s\33[39m" "${1}"
+}
+
+green ()
+{
+    printf "\33[32m%s\33[39m" "${1}"
+}
+
 yellow ()
 {
     printf "\33[33m%s\33[39m" "${1}"
 }
 
+_equal_ ()
+{
+    char '=' && _bind_ "${@}"
+}
+
+parameter ()
+{
+    identifier and 'notFollowedBy _equal_' and 'many space' && _bind_ "${@}"
+}
+
+assignment ()
+{
+    identifier and _equal_ and anyWord and 'many space' && _bind_ "${@}"
+}
+
 p_cat_n ()
 {
-    local tag name
+    local tag name params assignments
     until try eof ; do
 	printf '%6d  ' "${__line__}"
-	try 'char @' && {
+	if try 'char @' ; then
 	    identifier as tag
 	    many1 space
 	    quoted_string as name
-	    many space
-	    show "$(cyan "@${tag}") $(yellow "${name}") "
-    	    try newline show
-	} || line show
+	    case "${tag}" in
+		'test' | 'data' )
+		    many space
+		    newline
+		    show "$(cyan "@${tag}") $(green "${name}")\n"
+		    ;;
+		'with' )
+		    params=; assignments=;
+		    many1 space
+		    word 'as'
+		    many1 space
+		    many1 parameter as params
+		    many assignment as assignments
+		    many space
+		    newline
+		    show "$(cyan "@${tag}") $(green "${name}") as $(red "${params}") $(yellow "${assignments}")\n"
+		;;
+		* )
+		    unexpected "@${tag}"
+		    return 1
+		    ;;
+	    esac
+	else
+	    line show
+	fi
     done
 }
 
